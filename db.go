@@ -43,6 +43,8 @@ func (a *App) pingDB() {
 	}
 }
 
+// USERS
+
 // User type for database
 type User struct {
 	ID          int       `json:"id"`
@@ -105,4 +107,12 @@ func (a *App) getUserByEmailDB(ctx context.Context, email string) (*User, error)
 	}
 
 	return &user, nil
+}
+
+func (a *App) updateUserLastLoginByIDDB(id int, time time.Time) error {
+	const updateQuery string = `UPDATE users SET last_login=$1 WHERE id=$2`
+
+	_, err := a.db.Exec(updateQuery, time, id)
+
+	return err
 }

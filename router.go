@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -17,18 +19,14 @@ import (
 func (a *App) SetUpRouter() {
 	r := mux.NewRouter()
 
-	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Hello"))
-	})
-
 	r.HandleFunc("/signup", a.SignUpHandler).Methods("POST")
 	r.HandleFunc("/login", a.LoginHandler).Methods("POST")
 
 	a.router = r
 }
 
-// SignUpPayload is the struct for the signup endpoint
-type SignUpPayload struct {
+// SignUpRequest is the struct for the signup endpoint
+type SignUpRequest struct {
 	Email           string `json:"email" validate:"required,email"`
 	Password        string `json:"password" validate:"required"`
 	ConfirmPassword string `json:"confirmPassword" validate:"required,eqfield=Password"`
@@ -37,7 +35,7 @@ type SignUpPayload struct {
 
 // SignUpHandler handles the signup endpoint
 func (a *App) SignUpHandler(w http.ResponseWriter, r *http.Request) {
-	var payload SignUpPayload
+	var payload SignUpRequest
 	err := json.NewDecoder(r.Body).Decode(&payload)
 
 	if err != nil {
@@ -70,24 +68,30 @@ func (a *App) SignUpHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Token holds the data for the token generation
+type Token struct {
+	ID       int    `json:"id"`
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	jwt.StandardClaims
+}
+
+// Valid method returns wheather the token is valid or not
+func (t *Token) Valid() error {
+	if t.VerifyExpiresAt(time.Now().Unix(), true) == false {
+		return errors.New("Token expired")
+	}
+
+	return nil
+}
+
 // LoginRequest holds the payload for a login request
 type LoginRequest struct {
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required"`
 }
 
-// Token holds the data for the token generation
-type Token struct {
-	ID             int    `json:"id"`
-	Username       string `json:"username"`
-	Email          string `json:"email"`
-	StandardClaims *jwt.StandardClaims
-}
-
-func (t *Token) Valid() error {
-	return nil
-}
-
+// LoginResponse is the payload returned by Login handler
 type LoginResponse struct {
 	ID        int       `json:"id"`
 	Username  string    `json:"user"`
@@ -104,6 +108,7 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(err.Error()))
+		return
 	}
 
 	user, dbErr := a.getUserByEmailDB(r.Context(), payload.Email)
@@ -111,26 +116,23 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	if dbErr != nil {
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte("Incorrect user or password"))
+		return
 	}
 
 	if !comparePasswordHashes(payload.Password, user.Password) {
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte("Incorrect user or password"))
+		return
 	}
 
 	expirationTime := time.Now().Add(time.Minute * 30)
-	token := &Token{
-		ID:       user.ID,
-		Username: user.Username,
-		Email:    user.Email,
-		StandardClaims: &jwt.StandardClaims{
-			ExpiresAt: expirationTime.Unix(),
-		},
-	}
-	responseToken := jwt.NewWithClaims(jwt.GetSigningMethod("HS256"), token)
-	tokenString, error := responseToken.SignedString([]byte(os.Getenv("JWT_SECRET")))
-	if error != nil {
-		fmt.Println(error)
+
+	tokenString, tokenError := generateTokenFromUser(user, expirationTime)
+
+	if tokenError != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("There was a problem generating the token"))
+		return
 	}
 
 	resp := LoginResponse{
@@ -141,7 +143,7 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		CreatedOn: user.CreatedOn,
 	}
 	cookie := http.Cookie{
-		Name:    "dport",
+		Name:    os.Getenv("COOKIE_NAME"),
 		Value:   tokenString,
 		Expires: expirationTime,
 	}
@@ -155,7 +157,43 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(encErr.Error()))
 	}
+
+	updateErr := a.updateUserLastLoginByIDDB(user.ID, time.Now())
+
+	if updateErr != nil {
+		fmt.Println("There was a problem updating the last log in time")
+		fmt.Println(updateErr)
+	}
 }
+
+// Auth is a middleware for routes
+func Auth(next http.HandlerFunc) http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cookie, cookieErr := r.Cookie(os.Getenv("COOKIE_NAME"))
+
+		if cookieErr != nil {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+
+		tk := &Token{}
+
+		_, tokenErr := jwt.ParseWithClaims(cookie.Value, tk, func(token *jwt.Token) (interface{}, error) {
+			return []byte(os.Getenv("JWT_SECRET")), nil
+		})
+
+		if tokenErr != nil {
+			w.WriteHeader(http.StatusForbidden)
+			fmt.Println(tokenErr)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), "user", tk)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// Helpers
 
 func comparePasswordHashes(password string, hash string) bool {
 	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
@@ -163,4 +201,23 @@ func comparePasswordHashes(password string, hash string) bool {
 		return false
 	}
 	return true
+}
+
+func generateTokenFromUser(user *User, expirationTime time.Time) (string, error) {
+	token := &Token{
+		ID:       user.ID,
+		Username: user.Username,
+		Email:    user.Email,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: expirationTime.Unix(),
+		},
+	}
+	responseToken := jwt.NewWithClaims(jwt.GetSigningMethod("HS256"), token)
+	tokenString, error := responseToken.SignedString([]byte(os.Getenv("JWT_SECRET")))
+	if error != nil {
+		fmt.Println(error)
+		return "", error
+	}
+
+	return tokenString, nil
 }

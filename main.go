@@ -12,6 +12,7 @@ import (
 	_ "github.com/lib/pq"
 )
 
+// App holds the router and the db instances
 type App struct {
 	db     *sql.DB
 	router *mux.Router
