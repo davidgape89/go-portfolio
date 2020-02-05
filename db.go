@@ -62,7 +62,6 @@ func (a *App) createUserDB(ctx context.Context, user *User) (sql.Result, error) 
 	res, err := a.db.ExecContext(ctx, insertQuery, user.Username, user.Password, user.Email, createdOn)
 
 	if err != nil {
-		fmt.Println(err)
 		return nil, err
 	}
 
@@ -71,9 +70,10 @@ func (a *App) createUserDB(ctx context.Context, user *User) (sql.Result, error) 
 
 func (a *App) getUserByEmailDB(ctx context.Context, email string) (*User, error) {
 	const userQuery string = "SELECT * FROM users WHERE email = $1;"
-	fmt.Println(email)
+
 	res, err := a.db.QueryContext(ctx, userQuery, email)
 	defer res.Close()
+
 	if err != nil {
 		return &User{}, err
 	}
@@ -134,7 +134,7 @@ func (a *App) getPostsDB(ctx context.Context, status PostStatus) (*[]Post, error
 		}
 		posts = append(posts, post)
 	}
-	fmt.Printf("%p\n", posts)
+
 	return &posts, nil
 }
 

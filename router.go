@@ -125,7 +125,6 @@ type PostsResponse struct {
 
 func (a *App) GetPostsHandler(w http.ResponseWriter, r *http.Request) {
 	posts, err := a.getPostsDB(r.Context(), Posted)
-	fmt.Printf("%p", *posts)
 
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -270,7 +269,6 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	encErr := json.NewEncoder(w).Encode(resp)
 
 	if encErr != nil {
-		fmt.Println(encErr)
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(encErr.Error()))
 	}
@@ -278,6 +276,7 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	updateErr := a.updateUserLastLoginByIDDB(user.ID, time.Now())
 
 	if updateErr != nil {
+		// TODO - Log this properly
 		fmt.Println("There was a problem updating the last log in time")
 		fmt.Println(updateErr)
 	}
@@ -301,7 +300,6 @@ func Auth(next http.HandlerFunc) http.HandlerFunc {
 
 		if tokenErr != nil {
 			w.WriteHeader(http.StatusForbidden)
-			fmt.Println(tokenErr)
 			return
 		}
 
@@ -332,7 +330,6 @@ func generateTokenFromUser(user *User, expirationTime time.Time) (string, error)
 	responseToken := jwt.NewWithClaims(jwt.GetSigningMethod("HS256"), token)
 	tokenString, error := responseToken.SignedString([]byte(os.Getenv("JWT_SECRET")))
 	if error != nil {
-		fmt.Println(error)
 		return "", error
 	}
 
