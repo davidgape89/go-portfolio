@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+
 	"os"
 	"time"
 
@@ -85,6 +87,9 @@ func (a *App) getUserByEmailDB(ctx context.Context, email string) (*User, error)
 	fmt.Println(email)
 	res, err := a.db.QueryContext(ctx, userQuery, email)
 	defer res.Close()
+	if err != nil {
+		return &User{}, err
+	}
 
 	var user User
 
@@ -98,15 +103,123 @@ func (a *App) getUserByEmailDB(ctx context.Context, email string) (*User, error)
 			&user.LastLogin,
 		)
 		if scanErr != nil {
-			fmt.Println(err)
+			return &User{}, scanErr
 		}
 	}
 
+	return &user, nil
+}
+
+func (a *App) updateUserLastLoginByIDDB(id int, time time.Time) error {
+	const updateQuery string = `UPDATE users SET last_login=$1 WHERE id=$2`
+
+	_, err := a.db.Exec(updateQuery, time, id)
+
+	return err
+}
+
+// POSTS
+
+func (a *App) getPostsDB(ctx context.Context, status PostStatus) ([]Post, error) {
+	const postsQuery string = "SELECT * FROM posts WHERE status = $1"
+	res, err := a.db.QueryContext(ctx, postsQuery, status)
+	defer res.Close()
+
+	var posts []Post
+	fmt.Println(posts)
+	fmt.Println(err)
 	if err != nil {
-		return &User{}, err
+		return posts, err
 	}
 
-	return &user, nil
+	for res.Next() {
+		var post Post
+		scanErr := res.Scan(
+			&post.ID,
+			&post.UserID,
+			&post.Title,
+			&post.Content,
+			&post.Status,
+			&post.CreateTime,
+			&post.UpdateTime,
+		)
+		if scanErr != nil {
+			return posts, scanErr
+		}
+		posts = append(posts, post)
+	}
+
+	return posts, nil
+}
+
+func (a *App) storePostDB(ctx context.Context, post Post) error {
+	fmt.Println(post)
+	const insertQuery string = "INSERT INTO posts (user_id, title, content, status, create_time) " +
+		"VALUES ($1, $2, $3, $4, $5)"
+	post.CreateTime = time.Now()
+
+	_, err := a.db.ExecContext(
+		ctx,
+		insertQuery,
+		post.UserID,
+		post.Title,
+		post.Content,
+		post.Status,
+		post.CreateTime,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// JSONNullTime stores a time value that could be null
+type JSONNullTime struct {
+	sql.NullTime
+}
+
+// MarshalJSON method encodes the database value into a json value
+func (v JSONNullTime) MarshalJSON() ([]byte, error) {
+	if v.Valid {
+		return json.Marshal(v.Time)
+	}
+
+	return json.Marshal(nil)
+}
+
+// UnmarshalJSON encodes a json value into a database value
+func (v *JSONNullTime) UnmarshalJSON(data []byte) error {
+	// Unmarshalling into a pointer will let us detect null
+	var t *time.Time
+	if err := json.Unmarshal(data, &t); err != nil {
+		return err
+	}
+	if t != nil {
+		v.Valid = true
+		v.Time = *t
+	} else {
+		v.Valid = false
+	}
+	return nil
+}
+
+type PostStatus string
+
+const (
+	Posted PostStatus = "posted"
+	Hidden PostStatus = "hidden"
+)
+
+type Post struct {
+	ID         int          `json:"id"`
+	UserID     int          `json:"userId" validate:"required,min=1"`
+	Title      string       `json:"title" validate:"required"`
+	Content    string       `json:"content" validate:"required"`
+	Status     PostStatus   `json:"status" validate:"required"`
+	CreateTime time.Time    `json:"createTime"`
+	UpdateTime JSONNullTime `json:"updateTime"`
 }
 
 func (a *App) updateUserLastLoginByIDDB(id int, time time.Time) error {

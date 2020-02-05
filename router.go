@@ -21,8 +21,60 @@ func (a *App) SetUpRouter() {
 
 	r.HandleFunc("/signup", a.SignUpHandler).Methods("POST")
 	r.HandleFunc("/login", a.LoginHandler).Methods("POST")
+	r.HandleFunc("/posts", a.GetPostsHandler).Methods("GET")
+	r.HandleFunc("/posts", a.NewPostHandler).Methods("POST")
 
 	a.router = r
+}
+
+type PostRequest struct {
+	UserID  int        `json:"userId" validate:"required,min=1"`
+	Title   string     `json:"title" validate:"required"`
+	Content string     `json:"content" validate:"required"`
+	Status  PostStatus `json:"status" validate:"required"`
+}
+
+func (a *App) NewPostHandler(w http.ResponseWriter, r *http.Request) {
+	var post Post
+
+	if encErr := json.NewDecoder(r.Body).Decode(&post); encErr != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(encErr.Error()))
+	}
+	fmt.Println(post)
+	validator := validator.New()
+
+	if valErr := validator.Struct(post); valErr != nil {
+		fmt.Println(valErr)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(valErr.Error()))
+		return
+	}
+
+	if dbErr := a.storePostDB(r.Context(), post); dbErr != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(dbErr.Error()))
+	}
+}
+
+type PostsResponse struct {
+	posts []Post `json:"posts"`
+}
+
+func (a *App) GetPostsHandler(w http.ResponseWriter, r *http.Request) {
+	posts, err := a.getPostsDB(r.Context(), Posted)
+
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
+	}
+
+	encErr := json.NewEncoder(w).Encode(posts)
+
+	if encErr != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(encErr.Error()))
+	}
 }
 
 // SignUpRequest is the struct for the signup endpoint
@@ -46,7 +98,6 @@ func (a *App) SignUpHandler(w http.ResponseWriter, r *http.Request) {
 
 	validator := validator.New()
 	err = validator.Struct(payload)
-	fmt.Println(payload)
 
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
