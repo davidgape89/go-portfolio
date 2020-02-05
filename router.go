@@ -26,6 +26,7 @@ func (a *App) SetUpRouter() {
 	r.HandleFunc("/posts", a.NewPostHandler).Methods("POST")
 	r.HandleFunc("/posts/{id}", a.GetPostHandler).Methods("GET")
 	r.HandleFunc("/posts/{id}", a.DeletePostHandler).Methods("DELETE")
+	r.HandleFunc("/posts/{id}", a.UpdatePostHandler).Methods("PUT")
 
 	a.router = r
 }
@@ -89,6 +90,31 @@ func (a *App) NewPostHandler(w http.ResponseWriter, r *http.Request) {
 
 	if dbErr := a.storePostDB(r.Context(), post); dbErr != nil {
 		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(dbErr.Error()))
+	}
+}
+
+func (a *App) UpdatePostHandler(w http.ResponseWriter, r *http.Request) {
+	var post Post
+
+	if encErr := json.NewDecoder(r.Body).Decode(&post); encErr != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(encErr.Error()))
+		return
+	}
+
+	validator := validator.New()
+
+	if valErr := validator.Struct(post); valErr != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(valErr.Error()))
+		return
+	}
+
+	rows, dbErr := a.updatePostDB(r.Context(), post)
+
+	if dbErr != nil || rows == 0 {
+		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte(dbErr.Error()))
 	}
 }

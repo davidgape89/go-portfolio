@@ -183,7 +183,6 @@ func (a *App) deletePostByIdDB(ctx context.Context, id int) (int64, error) {
 }
 
 func (a *App) storePostDB(ctx context.Context, post Post) error {
-	fmt.Println(post)
 	const insertQuery string = "INSERT INTO posts (user_id, title, content, status, create_time) " +
 		"VALUES ($1, $2, $3, $4, $5)"
 	post.CreateTime = time.Now()
@@ -203,6 +202,28 @@ func (a *App) storePostDB(ctx context.Context, post Post) error {
 	}
 
 	return nil
+}
+
+func (a *App) updatePostDB(ctx context.Context, post Post) (int64, error) {
+	const updateQuery string = "UPDATE posts SET title = $1, content = $2, status = $3, update_time = $4 " +
+		"WHERE id = $5"
+	post.UpdateTime = JSONNullTime{NullTime: sql.NullTime{Time: time.Now(), Valid: true}}
+
+	resp, err := a.db.ExecContext(
+		ctx,
+		updateQuery,
+		post.Title,
+		post.Content,
+		post.Status,
+		post.UpdateTime,
+		post.ID,
+	)
+
+	if err != nil {
+		return 0, err
+	}
+
+	return resp.RowsAffected()
 }
 
 // JSONNullTime stores a time value that could be null
