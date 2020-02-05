@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
@@ -23,15 +24,50 @@ func (a *App) SetUpRouter() {
 	r.HandleFunc("/login", a.LoginHandler).Methods("POST")
 	r.HandleFunc("/posts", a.GetPostsHandler).Methods("GET")
 	r.HandleFunc("/posts", a.NewPostHandler).Methods("POST")
+	r.HandleFunc("/posts/{id}", a.GetPostHandler).Methods("GET")
+	r.HandleFunc("/posts/{id}", a.DeletePostHandler).Methods("DELETE")
 
 	a.router = r
 }
 
-type PostRequest struct {
-	UserID  int        `json:"userId" validate:"required,min=1"`
-	Title   string     `json:"title" validate:"required"`
-	Content string     `json:"content" validate:"required"`
-	Status  PostStatus `json:"status" validate:"required"`
+func (a *App) DeletePostHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.Atoi(vars["id"])
+
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	rows, dbErr := a.deletePostByIdDB(r.Context(), id)
+
+	if dbErr != nil || rows == 0 {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+}
+
+func (a *App) GetPostHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.Atoi(vars["id"])
+
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	post, dbErr := a.getPostByIdDB(r.Context(), id)
+
+	if dbErr != nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	w.Header().Add("Content-Type", "application/json")
+	if encErr := json.NewEncoder(w).Encode(post); encErr != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 }
 
 func (a *App) NewPostHandler(w http.ResponseWriter, r *http.Request) {
@@ -40,12 +76,12 @@ func (a *App) NewPostHandler(w http.ResponseWriter, r *http.Request) {
 	if encErr := json.NewDecoder(r.Body).Decode(&post); encErr != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(encErr.Error()))
+		return
 	}
-	fmt.Println(post)
+
 	validator := validator.New()
 
 	if valErr := validator.Struct(post); valErr != nil {
-		fmt.Println(valErr)
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(valErr.Error()))
 		return
@@ -67,13 +103,16 @@ func (a *App) GetPostsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(err.Error()))
+		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	encErr := json.NewEncoder(w).Encode(posts)
 
 	if encErr != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(encErr.Error()))
+		return
 	}
 }
 

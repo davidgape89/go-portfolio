@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"os"
@@ -32,20 +33,6 @@ func NewDataBase() *sql.DB {
 
 	return db
 }
-
-func (a *App) pingDB() {
-	ctx, stop := context.WithCancel(context.Background())
-	defer stop()
-
-	pctx, cancel := context.WithTimeout(ctx, 1*time.Second)
-	defer cancel()
-
-	if err := a.db.PingContext(pctx); err != nil {
-		panic(err)
-	}
-}
-
-// USERS
 
 // User type for database
 type User struct {
@@ -126,8 +113,7 @@ func (a *App) getPostsDB(ctx context.Context, status PostStatus) ([]Post, error)
 	defer res.Close()
 
 	var posts []Post
-	fmt.Println(posts)
-	fmt.Println(err)
+
 	if err != nil {
 		return posts, err
 	}
@@ -150,6 +136,50 @@ func (a *App) getPostsDB(ctx context.Context, status PostStatus) ([]Post, error)
 	}
 
 	return posts, nil
+}
+
+func (a *App) getPostByIdDB(ctx context.Context, id int) (Post, error) {
+	var post Post
+	const postQuery = "SELECT * FROM posts WHERE id = $1;"
+
+	res, err := a.db.QueryContext(ctx, postQuery, id)
+	defer res.Close()
+
+	if err != nil {
+		return post, err
+	}
+
+	if !res.Next() {
+		return post, errors.New("No results found")
+	}
+
+	scanErr := res.Scan(
+		&post.ID,
+		&post.UserID,
+		&post.Title,
+		&post.Content,
+		&post.Status,
+		&post.CreateTime,
+		&post.UpdateTime,
+	)
+
+	if scanErr != nil {
+		return post, scanErr
+	}
+
+	return post, nil
+}
+
+func (a *App) deletePostByIdDB(ctx context.Context, id int) (int64, error) {
+	const deleteQuery = "DELETE FROM posts WHERE id = $1;"
+
+	resp, err := a.db.ExecContext(ctx, deleteQuery, id)
+
+	if err != nil {
+		return 0, err
+	}
+
+	return resp.RowsAffected()
 }
 
 func (a *App) storePostDB(ctx context.Context, post Post) error {
