@@ -107,7 +107,7 @@ func (a *App) updateUserLastLoginByIDDB(id int, time time.Time) error {
 
 // POSTS
 
-func (a *App) getPostsDB(ctx context.Context, status PostStatus) ([]Post, error) {
+func (a *App) getPostsDB(ctx context.Context, status PostStatus) (*[]Post, error) {
 	const postsQuery string = "SELECT * FROM posts WHERE status = $1"
 	res, err := a.db.QueryContext(ctx, postsQuery, status)
 	defer res.Close()
@@ -115,7 +115,7 @@ func (a *App) getPostsDB(ctx context.Context, status PostStatus) ([]Post, error)
 	var posts []Post
 
 	if err != nil {
-		return posts, err
+		return &posts, err
 	}
 
 	for res.Next() {
@@ -130,15 +130,15 @@ func (a *App) getPostsDB(ctx context.Context, status PostStatus) ([]Post, error)
 			&post.UpdateTime,
 		)
 		if scanErr != nil {
-			return posts, scanErr
+			return &posts, scanErr
 		}
 		posts = append(posts, post)
 	}
-
-	return posts, nil
+	fmt.Printf("%p\n", posts)
+	return &posts, nil
 }
 
-func (a *App) getPostByIdDB(ctx context.Context, id int) (Post, error) {
+func (a *App) getPostByIdDB(ctx context.Context, id int) (*Post, error) {
 	var post Post
 	const postQuery = "SELECT * FROM posts WHERE id = $1;"
 
@@ -146,11 +146,11 @@ func (a *App) getPostByIdDB(ctx context.Context, id int) (Post, error) {
 	defer res.Close()
 
 	if err != nil {
-		return post, err
+		return &post, err
 	}
 
 	if !res.Next() {
-		return post, errors.New("No results found")
+		return &post, errors.New("No results found")
 	}
 
 	scanErr := res.Scan(
@@ -164,10 +164,10 @@ func (a *App) getPostByIdDB(ctx context.Context, id int) (Post, error) {
 	)
 
 	if scanErr != nil {
-		return post, scanErr
+		return &post, scanErr
 	}
 
-	return post, nil
+	return &post, nil
 }
 
 func (a *App) deletePostByIdDB(ctx context.Context, id int) (int64, error) {
@@ -182,7 +182,7 @@ func (a *App) deletePostByIdDB(ctx context.Context, id int) (int64, error) {
 	return resp.RowsAffected()
 }
 
-func (a *App) storePostDB(ctx context.Context, post Post) error {
+func (a *App) storePostDB(ctx context.Context, post *Post) error {
 	const insertQuery string = "INSERT INTO posts (user_id, title, content, status, create_time) " +
 		"VALUES ($1, $2, $3, $4, $5)"
 	post.CreateTime = time.Now()
@@ -204,7 +204,7 @@ func (a *App) storePostDB(ctx context.Context, post Post) error {
 	return nil
 }
 
-func (a *App) updatePostDB(ctx context.Context, post Post) (int64, error) {
+func (a *App) updatePostDB(ctx context.Context, post *Post) (int64, error) {
 	const updateQuery string = "UPDATE posts SET title = $1, content = $2, status = $3, update_time = $4 " +
 		"WHERE id = $5"
 	post.UpdateTime = JSONNullTime{NullTime: sql.NullTime{Time: time.Now(), Valid: true}}
@@ -271,12 +271,4 @@ type Post struct {
 	Status     PostStatus   `json:"status" validate:"required"`
 	CreateTime time.Time    `json:"createTime"`
 	UpdateTime JSONNullTime `json:"updateTime"`
-}
-
-func (a *App) updateUserLastLoginByIDDB(id int, time time.Time) error {
-	const updateQuery string = `UPDATE users SET last_login=$1 WHERE id=$2`
-
-	_, err := a.db.Exec(updateQuery, time, id)
-
-	return err
 }

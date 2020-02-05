@@ -65,7 +65,7 @@ func (a *App) GetPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Add("Content-Type", "application/json")
-	if encErr := json.NewEncoder(w).Encode(post); encErr != nil {
+	if encErr := json.NewEncoder(w).Encode(*post); encErr != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -88,7 +88,7 @@ func (a *App) NewPostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if dbErr := a.storePostDB(r.Context(), post); dbErr != nil {
+	if dbErr := a.storePostDB(r.Context(), &post); dbErr != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(dbErr.Error()))
 	}
@@ -111,7 +111,7 @@ func (a *App) UpdatePostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, dbErr := a.updatePostDB(r.Context(), post)
+	rows, dbErr := a.updatePostDB(r.Context(), &post)
 
 	if dbErr != nil || rows == 0 {
 		w.WriteHeader(http.StatusNotFound)
@@ -125,6 +125,7 @@ type PostsResponse struct {
 
 func (a *App) GetPostsHandler(w http.ResponseWriter, r *http.Request) {
 	posts, err := a.getPostsDB(r.Context(), Posted)
+	fmt.Printf("%p", *posts)
 
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
