@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
@@ -21,8 +22,124 @@ func (a *App) SetUpRouter() {
 
 	r.HandleFunc("/signup", a.SignUpHandler).Methods("POST")
 	r.HandleFunc("/login", a.LoginHandler).Methods("POST")
+	r.HandleFunc("/posts", a.GetPostsHandler).Methods("GET")
+	r.HandleFunc("/posts", a.NewPostHandler).Methods("POST")
+	r.HandleFunc("/posts/{id}", a.GetPostHandler).Methods("GET")
+	r.HandleFunc("/posts/{id}", a.DeletePostHandler).Methods("DELETE")
+	r.HandleFunc("/posts/{id}", a.UpdatePostHandler).Methods("PUT")
 
 	a.router = r
+}
+
+func (a *App) DeletePostHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.Atoi(vars["id"])
+
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	rows, dbErr := a.deletePostByIdDB(r.Context(), id)
+
+	if dbErr != nil || rows == 0 {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+}
+
+func (a *App) GetPostHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.Atoi(vars["id"])
+
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	post, dbErr := a.getPostByIdDB(r.Context(), id)
+
+	if dbErr != nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	w.Header().Add("Content-Type", "application/json")
+	if encErr := json.NewEncoder(w).Encode(*post); encErr != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+}
+
+func (a *App) NewPostHandler(w http.ResponseWriter, r *http.Request) {
+	var post Post
+
+	if encErr := json.NewDecoder(r.Body).Decode(&post); encErr != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(encErr.Error()))
+		return
+	}
+
+	validator := validator.New()
+
+	if valErr := validator.Struct(post); valErr != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(valErr.Error()))
+		return
+	}
+
+	if dbErr := a.storePostDB(r.Context(), &post); dbErr != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(dbErr.Error()))
+	}
+}
+
+func (a *App) UpdatePostHandler(w http.ResponseWriter, r *http.Request) {
+	var post Post
+
+	if encErr := json.NewDecoder(r.Body).Decode(&post); encErr != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(encErr.Error()))
+		return
+	}
+
+	validator := validator.New()
+
+	if valErr := validator.Struct(post); valErr != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(valErr.Error()))
+		return
+	}
+
+	rows, dbErr := a.updatePostDB(r.Context(), &post)
+
+	if dbErr != nil || rows == 0 {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(dbErr.Error()))
+	}
+}
+
+type PostsResponse struct {
+	posts []Post `json:"posts"`
+}
+
+func (a *App) GetPostsHandler(w http.ResponseWriter, r *http.Request) {
+	posts, err := a.getPostsDB(r.Context(), Posted)
+
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	encErr := json.NewEncoder(w).Encode(posts)
+
+	if encErr != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(encErr.Error()))
+		return
+	}
 }
 
 // SignUpRequest is the struct for the signup endpoint
@@ -46,7 +163,6 @@ func (a *App) SignUpHandler(w http.ResponseWriter, r *http.Request) {
 
 	validator := validator.New()
 	err = validator.Struct(payload)
-	fmt.Println(payload)
 
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -153,7 +269,6 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	encErr := json.NewEncoder(w).Encode(resp)
 
 	if encErr != nil {
-		fmt.Println(encErr)
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(encErr.Error()))
 	}
@@ -161,6 +276,7 @@ func (a *App) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	updateErr := a.updateUserLastLoginByIDDB(user.ID, time.Now())
 
 	if updateErr != nil {
+		// TODO - Log this properly
 		fmt.Println("There was a problem updating the last log in time")
 		fmt.Println(updateErr)
 	}
@@ -184,7 +300,6 @@ func Auth(next http.HandlerFunc) http.HandlerFunc {
 
 		if tokenErr != nil {
 			w.WriteHeader(http.StatusForbidden)
-			fmt.Println(tokenErr)
 			return
 		}
 
@@ -215,7 +330,6 @@ func generateTokenFromUser(user *User, expirationTime time.Time) (string, error)
 	responseToken := jwt.NewWithClaims(jwt.GetSigningMethod("HS256"), token)
 	tokenString, error := responseToken.SignedString([]byte(os.Getenv("JWT_SECRET")))
 	if error != nil {
-		fmt.Println(error)
 		return "", error
 	}
 
