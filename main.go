@@ -39,7 +39,8 @@ func main() {
 	r := router.New(database)
 
 	allowedHeaders := handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type"})
-	allowedOrigins := handlers.AllowedOrigins([]string{os.Getenv("ORIGIN_ALLOWED")})
+	//allowedOrigins := handlers.AllowedOrigins([]string{os.Getenv("ORIGIN_ALLOWED")})
+	allowedOrigins := handlers.AllowedOrigins([]string{"*"})
 	allowedMethods := handlers.AllowedMethods([]string{"GET", "HEAD", "POST", "PUT", "OPTIONS"})
 
 	server := &http.Server{
