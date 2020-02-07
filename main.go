@@ -17,10 +17,14 @@ func main() {
 	envErr := godotenv.Load()
 
 	if envErr != nil {
-		log.Fatal(envErr)
+		fmt.Println(envErr)
 	}
 
-	address := ":8080"
+	address := fmt.Sprintf(
+		"%s:%s",
+		os.Getenv("ADDRESS"),
+		os.Getenv("PORT"),
+	)
 
 	database := db.New(
 		os.Getenv("DB_HOST"),
