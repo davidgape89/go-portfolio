@@ -152,3 +152,16 @@ func (router *Router) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Println(updateErr)
 	}
 }
+
+// LoginHandler handles login requests
+func (router *Router) LogoutHandler(w http.ResponseWriter, r *http.Request) {
+	cookie := http.Cookie{
+		Name:    os.Getenv("COOKIE_NAME"),
+		Value:   "invalidated",
+		Expires: time.Now().AddDate(0, 0, -7),
+	}
+
+	http.SetCookie(w, &cookie)
+	w.WriteHeader(http.StatusForbidden)
+	w.Write([]byte("Logged out successfully"))
+}
