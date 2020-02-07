@@ -1,0 +1,18 @@
+name: Go
+on: [push]
+jobs:
+
+  deploy:
+    name: Deploy to Heroku
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: Deploy to Heroku
+      uses: AkhileshNS/heroku-deploy@v3.0.0
+      with:
+        # This will be used for authentication. You can find it in your heroku homepage account settings
+        heroku_api_key: be8a3af5-3b83-4882-b53c-421fd91abf21
+        # Email that you use with heroku
+        heroku_email: davidgape89@gmail.com
+        # The appname to use for deploying/updating
+        heroku_app_name: portfolio-goserver
