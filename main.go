@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/gorilla/handlers"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 )
@@ -37,14 +38,19 @@ func main() {
 
 	r := router.New(database)
 
-	fmt.Println("Running App on ", address)
+	allowedHeaders := handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type"})
+	//allowedOrigins := handlers.AllowedOrigins([]string{os.Getenv("ORIGIN_ALLOWED")})
+	allowedOrigins := handlers.AllowedOrigins([]string{"*"})
+	allowedMethods := handlers.AllowedMethods([]string{"GET", "HEAD", "POST", "PUT", "OPTIONS"})
 
 	server := &http.Server{
-		Handler:      r,
+		Handler:      handlers.CORS(allowedHeaders, allowedOrigins, allowedMethods)(r),
 		Addr:         address,
 		WriteTimeout: 15 * time.Second,
 		ReadTimeout:  15 * time.Second,
 	}
+
+	fmt.Println("Running App on ", address)
 
 	log.Fatal(server.ListenAndServe())
 }
