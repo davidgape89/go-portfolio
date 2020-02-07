@@ -80,11 +80,11 @@ type LoginRequest struct {
 
 // LoginResponse is the payload returned by Login handler
 type LoginResponse struct {
-	ID        int       `json:"id"`
-	Username  string    `json:"user"`
-	Email     string    `json:"email"`
-	CreatedOn time.Time `json:"createdOn"`
-	LastLogin time.Time `json:"lastLogin"`
+	ID        int             `json:"id"`
+	Username  string          `json:"user"`
+	Email     string          `json:"email"`
+	CreatedOn time.Time       `json:"createdOn"`
+	LastLogin db.JSONNullTime `json:"lastLogin"`
 }
 
 // LoginHandler handles login requests

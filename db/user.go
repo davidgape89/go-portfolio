@@ -10,13 +10,13 @@ import (
 
 // User type for database
 type User struct {
-	ID          int       `json:"id"`
-	Username    string    `json:"username"`
-	Password    string    `json:"password"`
-	Email       string    `json:"email"`
-	CreatedOn   time.Time `json:"createdOn"`
-	LastLogin   time.Time `json:"lastLogin"`
-	Description string    `json:"description"`
+	ID          int          `json:"id"`
+	Username    string       `json:"username"`
+	Password    string       `json:"password"`
+	Email       string       `json:"email"`
+	CreatedOn   time.Time    `json:"createdOn"`
+	LastLogin   JSONNullTime `json:"lastLogin"`
+	Description string       `json:"description"`
 }
 
 func (db *DB) CreateUserDB(ctx context.Context, user *User) (sql.Result, error) {
