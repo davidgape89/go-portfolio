@@ -17,7 +17,7 @@ func main() {
 	envErr := godotenv.Load()
 
 	if envErr != nil {
-		fmt.Println(envErr)
+		fmt.Println("Env file not found, running with env variables...")
 	}
 
 	address := fmt.Sprintf(
