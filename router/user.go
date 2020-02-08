@@ -1,6 +1,7 @@
 package router
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
+	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/go-playground/validator.v9"
 )
 
@@ -57,9 +59,11 @@ func (router *Router) SignUpHandler(w http.ResponseWriter, r *http.Request) {
 
 // Token holds the data for the token generation
 type Token struct {
-	ID       int    `json:"id"`
-	Username string `json:"username"`
-	Email    string `json:"email"`
+	ID        int             `json:"id"`
+	Username  string          `json:"username"`
+	Email     string          `json:"email"`
+	CreatedOn time.Time       `json:"createdOn"`
+	LastLogin db.JSONNullTime `json:"lastLogin"`
 	jwt.StandardClaims
 }
 
@@ -112,6 +116,20 @@ func (router *Router) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	user.LastLogin = db.JSONNullTime{
+		NullTime: sql.NullTime{
+			Time:  time.Now(),
+			Valid: true,
+		},
+	}
+	updateErr := router.db.UpdateUserLastLoginByIDDB(user.ID, time.Now())
+
+	if updateErr != nil {
+		// TODO - Log this properly
+		fmt.Println("There was a problem updating the last log in time")
+		fmt.Println(updateErr)
+	}
+
 	expirationTime := time.Now().Add(time.Minute * 30)
 
 	tokenString, tokenError := generateTokenFromUser(user, expirationTime)
@@ -143,14 +161,6 @@ func (router *Router) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(encErr.Error()))
 	}
-
-	updateErr := router.db.UpdateUserLastLoginByIDDB(user.ID, time.Now())
-
-	if updateErr != nil {
-		// TODO - Log this properly
-		fmt.Println("There was a problem updating the last log in time")
-		fmt.Println(updateErr)
-	}
 }
 
 // LoginHandler handles login requests
@@ -164,4 +174,53 @@ func (router *Router) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &cookie)
 	w.WriteHeader(http.StatusForbidden)
 	w.Write([]byte("Logged out successfully"))
+}
+
+func (router *Router) GetUserHandler(w http.ResponseWriter, r *http.Request) {
+	tk := r.Context().Value("user").(*Token)
+	resp := LoginResponse{
+		ID:        tk.ID,
+		Username:  tk.Username,
+		Email:     tk.Email,
+		CreatedOn: tk.CreatedOn,
+		LastLogin: tk.LastLogin,
+	}
+
+	w.Header().Add("Content-Type", "application/json")
+	encErr := json.NewEncoder(w).Encode(resp)
+
+	if encErr != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(encErr.Error()))
+	}
+}
+
+// Helpers
+
+func comparePasswordHashes(password string, hash string) bool {
+	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+	if err != nil {
+		return false
+	}
+	return true
+}
+
+func generateTokenFromUser(user *db.User, expirationTime time.Time) (string, error) {
+	token := &Token{
+		ID:        user.ID,
+		Username:  user.Username,
+		Email:     user.Email,
+		CreatedOn: user.CreatedOn,
+		LastLogin: user.LastLogin,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: expirationTime.Unix(),
+		},
+	}
+	responseToken := jwt.NewWithClaims(jwt.GetSigningMethod("HS256"), token)
+	tokenString, error := responseToken.SignedString([]byte(os.Getenv("JWT_SECRET")))
+	if error != nil {
+		return "", error
+	}
+
+	return tokenString, nil
 }
