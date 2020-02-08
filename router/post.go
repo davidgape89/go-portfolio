@@ -53,11 +53,14 @@ func (router *Router) GetPostHandler(w http.ResponseWriter, r *http.Request) {
 func (router *Router) NewPostHandler(w http.ResponseWriter, r *http.Request) {
 	var post db.Post
 
-	if encErr := json.NewDecoder(r.Body).Decode(&post); encErr != nil {
+	if decErr := json.NewDecoder(r.Body).Decode(&post); decErr != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(encErr.Error()))
+		w.Write([]byte(decErr.Error()))
 		return
 	}
+
+	token := r.Context().Value("user").(*Token)
+	post.UserID = token.ID
 
 	validator := validator.New()
 
@@ -70,6 +73,12 @@ func (router *Router) NewPostHandler(w http.ResponseWriter, r *http.Request) {
 	if dbErr := router.db.StorePostDB(r.Context(), &post); dbErr != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(dbErr.Error()))
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if encErr := json.NewEncoder(w).Encode(post); encErr != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(encErr.Error()))
 	}
 }
 

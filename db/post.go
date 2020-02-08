@@ -104,11 +104,12 @@ func (db *DB) DeletePostByIdDB(ctx context.Context, id int) (int64, error) {
 }
 
 func (db *DB) StorePostDB(ctx context.Context, post *Post) error {
+	var postID int
 	const insertQuery string = "INSERT INTO posts (user_id, title, content, status, create_time) " +
-		"VALUES ($1, $2, $3, $4, $5)"
+		"VALUES ($1, $2, $3, $4, $5) RETURNING id"
 	post.CreateTime = time.Now()
 
-	_, err := db.ExecContext(
+	resp, err := db.QueryContext(
 		ctx,
 		insertQuery,
 		post.UserID,
@@ -120,6 +121,11 @@ func (db *DB) StorePostDB(ctx context.Context, post *Post) error {
 
 	if err != nil {
 		return err
+	}
+
+	if resp.Next() {
+		resp.Scan(&postID)
+		post.ID = postID
 	}
 
 	return nil
